@@ -90,3 +90,76 @@ exports.connectDB = async () => {
         process.exit(1);
     }
 };
+
+// routes/authRoutes.js
+let express = require('express');
+let User = require('../models/User');
+let jwt = require('jsonwebtoken');
+let bcrypt = require('bcryptjs');
+
+let router = express.Router();
+
+router.post('/signup', async (req, res) => {
+    try {
+        let { name, email, password } = req.body;
+        let user = new User({ name, email, password });
+        await user.save();
+        res.status(201).json({ message: 'User registered' });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+router.post('/login', async (req, res) => {
+    try {
+        let { email, password } = req.body;
+        let user = await User.findOne({ email });
+        if (!user || !(await bcrypt.compare(password, user.password))) {
+            return res.status(400).json({ message: 'Invalid credentials' });
+        }
+        let token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '30m' });
+        res.json({ token });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+module.exports = router;
+
+// routes/taskRoutes.js
+let express = require('express');
+let Task = require('../models/Task');
+let authMiddleware = require('../middlewares/authMiddleware');
+
+let router = express.Router();
+
+router.post('/add', authMiddleware, async (req, res) => {
+    try {
+        let { title, description, priority, deadline, isPublic, collaborator } = req.body;
+        let task = new Task({ title, description, priority, deadline, isPublic, owner: req.userId, collaborator });
+        await task.save();
+        res.status(201).json({ message: 'Task created' });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+router.get('/get', authMiddleware, async (req, res) => {
+    try {
+        let tasks = await Task.find({ owner: req.userId });
+        res.json(tasks);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+router.get('/public/get', async (req, res) => {
+    try {
+        let tasks = await Task.find({ isPublic: true });
+        res.json(tasks);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+module.exports = router;
